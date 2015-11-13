@@ -1,0 +1,24 @@
+#!/bin/bash
+
+
+function mount-ram-disk {
+	if [ "" == "$(mount | grep ${RAM_DISK_DIR})" ]; then
+		INFO "mounting ram disk: $(LIGHT_GREEN ${RAM_DISK_DIR})"
+		[ ! -d "${RAM_DISK_DIR}" ] && mkdir -p ${RAM_DISK_DIR}
+		mount -t tmpfs none ${RAM_DISK_DIR}
+	else
+		INFO "ram disk $(LIGHT_GREEN ${RAM_DISK_DIR}) is already mount"
+	fi
+}
+
+
+function init-variables {
+	export RAM_DISK_DIR="/tmp/tmpfs"
+}
+
+
+source $(dirname $0)/externals/bash-utils/verbose
+source $(dirname $0)/externals/bash-utils/funcs
+init-verbose $0
+init-variables
+mount-ram-disk
