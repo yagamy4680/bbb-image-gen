@@ -1,5 +1,10 @@
 #!/bin/bash
 
+function check-prerequisites {
+	[ "" == "$(which kpartx)" ] && echo "please install kpartx" && exit 1
+	[ "" == "$(which pv)" ] && echo "please install pv" && exit 1
+	[ "" == "$(which qemu-arm-static)" ] && echo "please install qemu-arm-static" && exit 1
+}
 
 function mount-ram-disk {
 	if [ "" == "$(mount | grep ${RAM_DISK_DIR})" ]; then
@@ -11,14 +16,95 @@ function mount-ram-disk {
 	fi
 }
 
-
-function init-variables {
-	export RAM_DISK_DIR="/tmp/tmpfs"
+function download-bbb-image {
+	if [ ! -f "${BBB_IMAGE}" ]; then
+		INFO "missing ${BBB_IMAGE}"
+		wget -O ${BBB_IMAGE} ${BBB_IMAGE_URL} || exit 1
+	else
+		INFO "${BBB_IMAGE} exists"
+	fi
 }
 
+function create-work-image {
+	RUN_CMD_STREAMING rm -f ${WORK_IMAGE} || exit 1
+	# RUN_CMD_STREAMING dd if=/dev/zero of=${WORK_IMAGE} bs=1M seek=${WORK_IMAGE_SIZE} count=1 || exit 1
+	INFO "copy bbb image to work image"
+	# unxz -c ${BBB_IMAGE} | pv | dd of=${WORK_IMAGE} || exit 1
+	unxz -c ${BBB_IMAGE} | pv > ${WORK_IMAGE} || exit 1
+}
+
+function mount-work-image {
+	TMP=$(mktemp /tmp/XXXXXX)
+	kpartx -d -s -v ${WORK_IMAGE}
+	kpartx -a -s -v ${WORK_IMAGE} > ${TMP} 2>&1
+	[ "0" != "$?" ] && ERR "failed to mount ${WORK_IMAGE}" && cat ${TMP} && exit 1
+	export WORK_DEVICE="/dev/mapper/$(cat ${TMP} | tail -n1 | awk '{print $3}')"
+	INFO "working device: $(LIGHT_GREEN ${WORK_DEVICE})"
+
+	mount | grep "/mnt/bbb-rootfs" | awk '{print $1}' | xargs -I{} sh -c "umount {}"
+	[ ! -d "${WORK_ROOTFS_DIR}" ] && RUN_CMD_STREAMING mkdir -p ${WORK_ROOTFS_DIR}
+	RUN_CMD_STREAMING mount -t ext4 ${WORK_DEVICE} ${WORK_ROOTFS_DIR}
+	INFO "working rootfs: $(LIGHT_GREEN ${WORK_ROOTFS_DIR})"
+}
+
+function pre-rootfs {
+	RUN_CMD_STREAMING cp $(which qemu-arm-static) ${WORK_ROOTFS_DIR}/usr/bin
+	RUN_CMD_STREAMING mount -o bind /tmp ${WORK_ROOTFS_DIR}/tmp
+	RUN_CMD_STREAMING mount -o bind /dev ${WORK_ROOTFS_DIR}/dev
+	RUN_CMD_STREAMING mount -o bind /proc ${WORK_ROOTFS_DIR}/proc
+	RUN_CMD_STREAMING mount -o bind /sys ${WORK_ROOTFS_DIR}/sys
+	RUN_CMD_STREAMING mv ${WORK_ROOTFS_DIR}/etc/resolv.conf ${WORK_ROOTFS_DIR}/etc/resolv.conf.bak
+	echo "nameserver 8.8.8.8" > ${WORK_ROOTFS_DIR}/etc/resolv.conf
+
+	# This registers the static QEMU we copied as arm-interpreter to the kernel.
+	#
+	echo ':arm:M::\x7fELF\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-arm-static:' > /proc/sys/fs/binfmt_misc/register
+}
+
+function process-rootfs {
+	RUN_CMD_STREAMING chroot ${WORK_ROOTFS_DIR} /bin/bash -c "mount"
+	RUN_CMD_STREAMING chroot ${WORK_ROOTFS_DIR} /bin/bash -c "du -s -m /*"
+	chroot ${WORK_ROOTFS_DIR} /bin/bash -c "apt-get update"
+}
+
+function post-rootfs {
+	sync
+	sync
+	sleep 2
+	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/dev
+	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/proc
+	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/sys
+	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/tmp
+}
+
+function umount-image {
+	kpartx -d -v ${WORK_IMAGE}
+}
+
+function init-variables {
+	[ "" == "${RAM_DISK_DIR}" ] && export RAM_DISK_DIR="/tmp/tmpfs"
+	[ "" == "${BBB_IMAGE_URL}" ] && export BBB_IMAGE_URL="https://rcn-ee.com/rootfs/2015-10-09/microsd/bone-ubuntu-14.04.3-console-armhf-2015-10-09-2gb.img.xz"
+	export BBB_IMAGE="/tmp/$(basename ${BBB_IMAGE_URL})"
+	export WORK_IMAGE="${RAM_DISK_DIR}/work-image.bin"
+	export WORK_IMAGE_SIZE="2000"
+	export WORK_ROOTFS_DIR="/mnt/bbb-rootfs"
+}
+
+
+check-prerequisites
 
 source $(dirname $0)/externals/bash-utils/verbose
 source $(dirname $0)/externals/bash-utils/funcs
 init-verbose $0
 init-variables
+
 mount-ram-disk
+download-bbb-image
+create-work-image
+mount-work-image
+
+pre-rootfs
+process-rootfs
+post-rootfs
+
+# umount-image
