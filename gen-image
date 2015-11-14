@@ -4,6 +4,7 @@ function check-prerequisites {
 	[ "" == "$(which kpartx)" ] && echo "please install kpartx" && exit 1
 	[ "" == "$(which pv)" ] && echo "please install pv" && exit 1
 	[ "" == "$(which qemu-arm-static)" ] && echo "please install qemu-arm-static" && exit 1
+	[ "" == "$(which bmaptool)" ] && echo "please install bmaptool" && exit 1
 }
 
 function mount-ram-disk {
@@ -27,10 +28,9 @@ function download-bbb-image {
 
 function create-work-image {
 	RUN_CMD_STREAMING rm -f ${WORK_IMAGE} || exit 1
-	# RUN_CMD_STREAMING dd if=/dev/zero of=${WORK_IMAGE} bs=1M seek=${WORK_IMAGE_SIZE} count=1 || exit 1
 	INFO "copy bbb image to work image"
-	# unxz -c ${BBB_IMAGE} | pv | dd of=${WORK_IMAGE} || exit 1
-	unxz -c ${BBB_IMAGE} | pv > ${WORK_IMAGE} || exit 1
+	unxz -c ${BBB_IMAGE} > ${WORK_IMAGE} || exit 1
+	# unxz -c ${BBB_IMAGE} | pv > ${WORK_IMAGE} || exit 1
 }
 
 function mount-work-image {
@@ -59,31 +59,69 @@ function pre-rootfs {
 	# This registers the static QEMU we copied as arm-interpreter to the kernel.
 	#
 	echo ':arm:M::\x7fELF\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-arm-static:' > /proc/sys/fs/binfmt_misc/register
+
+	RUN_CMD_STREAMING wget -q -O /tmp/repos.rcn-ee.net.gpg.key http://repos.rcn-ee.net/ubuntu/conf/repos.rcn-ee.net.gpg.key
+}
+
+function run-chroot-cmd {
+	INFO "$(LIGHT_GREEN $@)"
+	chroot ${WORK_ROOTFS_DIR} /bin/bash -c "$@"
 }
 
 function process-rootfs {
-	RUN_CMD_STREAMING chroot ${WORK_ROOTFS_DIR} /bin/bash -c "mount"
-	RUN_CMD_STREAMING chroot ${WORK_ROOTFS_DIR} /bin/bash -c "du -s -m /*"
-	chroot ${WORK_ROOTFS_DIR} /bin/bash -c "apt-get update"
+	run-chroot-cmd "apt-key add /tmp/repos.rcn-ee.net.gpg.key"
+	run-chroot-cmd "apt-get update -q"
+	run-chroot-cmd "apt-get -y install $(cat ${CURRENT}/apt-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "apt-get clean -y -q && apt-get autoclean -y -q && find /var/lib/apt -type f | xargs rm -f"
+	run-chroot-cmd "rm -rf /var/tmp/*"
+	chroot ${WORK_ROOTFS_DIR} /bin/bash
 }
 
 function post-rootfs {
-	sync
-	sync
-	sleep 2
+	# zero-fill will make bmaptool think all blocks are occupied, so
+	# this size optimization shall not be used.
+	#
+	# RUN_CMD_STREAMING dd if=/dev/zero of=${WORK_ROOTFS_DIR}/EMPTY bs=1M 
+	# RUN_CMD_STREAMING rm -f ${WORK_ROOTFS_DIR}/EMPTY
+	find ${WORK_ROOTFS_DIR}/var/log -type f | while read f; do echo -ne '' > $f; done;
+	RUN_CMD_STREAMING rm -rf /var/tmp/*
+	RUN_CMD_STREAMING sync
+	RUN_CMD_STREAMING sync
+	RUN_CMD_STREAMING sleep 2
+	RUN_CMD_STREAMING rm -f ${WORK_ROOTFS_DIR}/etc/resolv.conf
+	RUN_CMD_STREAMING mv ${WORK_ROOTFS_DIR}/etc/resolv.conf.bak ${WORK_ROOTFS_DIR}/etc/resolv.conf
 	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/dev
 	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/proc
 	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/sys
 	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/tmp
+	rm -f /tmp/repos.rcn-ee.net.gpg.key
 }
 
 function umount-image {
-	kpartx -d -v ${WORK_IMAGE}
+	RUN_CMD_STREAMING sync
+	RUN_CMD_STREAMING sync
+	RUN_CMD_STREAMING sleep 2
+	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}
+	RUN_CMD_STREAMING sync
+	RUN_CMD_STREAMING sync
+	RUN_CMD_STREAMING sleep 2
+	RUN_CMD_STREAMING kpartx -d -v ${WORK_IMAGE}
+}
+
+function generate-image-bmap {
+	RUN_CMD_STREAMING sync
+	RUN_CMD_STREAMING sleep 2
+	RUN_CMD_STREAMING bmaptool -d create -o ${WORK_IMAGE}.bmap ${WORK_IMAGE}
 }
 
 function init-variables {
 	[ "" == "${RAM_DISK_DIR}" ] && export RAM_DISK_DIR="/tmp/tmpfs"
 	[ "" == "${BBB_IMAGE_URL}" ] && export BBB_IMAGE_URL="https://rcn-ee.com/rootfs/2015-10-09/microsd/bone-ubuntu-14.04.3-console-armhf-2015-10-09-2gb.img.xz"
+	export CURRENT=$(pwd)
+	cd $(dirname $0)
+	export BASEDIR=$(pwd)
+	cd ${CURRENT}
+
 	export BBB_IMAGE="/tmp/$(basename ${BBB_IMAGE_URL})"
 	export WORK_IMAGE="${RAM_DISK_DIR}/work-image.bin"
 	export WORK_IMAGE_SIZE="2000"
@@ -101,10 +139,11 @@ init-variables
 mount-ram-disk
 download-bbb-image
 create-work-image
-mount-work-image
 
+mount-work-image
 pre-rootfs
 process-rootfs
 post-rootfs
+umount-image
 
-# umount-image
+generate-image-bmap
