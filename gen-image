@@ -28,9 +28,19 @@ function download-bbb-image {
 
 function create-work-image {
 	RUN_CMD_STREAMING rm -f ${WORK_IMAGE} || exit 1
+	FILENAME=$(basename ${BBB_IMAGE})
+	EXTENSION="${FILENAME#*.}"
+	INFO "image file extension: ${EXTENSION}"
+
 	INFO "copy bbb image to work image"
 	unxz -c ${BBB_IMAGE} > ${WORK_IMAGE} || exit 1
 	# unxz -c ${BBB_IMAGE} | pv > ${WORK_IMAGE} || exit 1
+
+	if [ "true" == "${BMAP_DUMMY_OPT_SUPPORT}" ]; then
+		INFO "dummy-run"
+		RUN_CMD_STREAMING bmaptool create -o ${WORK_IMAGE}.bmap ${WORK_IMAGE}
+		RUN_CMD_STREAMING bmaptool copy --bmap ${WORK_IMAGE}.bmap --dummy ${WORK_IMAGE} /dev/null
+	fi
 }
 
 function mount-work-image {
@@ -71,10 +81,10 @@ function run-chroot-cmd {
 function process-rootfs {
 	run-chroot-cmd "apt-key add /tmp/repos.rcn-ee.net.gpg.key"
 	run-chroot-cmd "apt-get update -q"
-	run-chroot-cmd "apt-get -y install $(cat ${CURRENT}/apt-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "apt-get -q -y install $(cat ${CURRENT}/apt-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "apt-get clean -y -q && apt-get autoclean -y -q && find /var/lib/apt -type f | xargs rm -f"
 	run-chroot-cmd "rm -rf /var/tmp/*"
-	chroot ${WORK_ROOTFS_DIR} /bin/bash
+	# chroot ${WORK_ROOTFS_DIR} /bin/bash
 }
 
 function post-rootfs {
@@ -111,7 +121,12 @@ function umount-image {
 function generate-image-bmap {
 	RUN_CMD_STREAMING sync
 	RUN_CMD_STREAMING sleep 2
-	RUN_CMD_STREAMING bmaptool -d create -o ${WORK_IMAGE}.bmap ${WORK_IMAGE}
+	RUN_CMD_STREAMING bmaptool create -o ${WORK_IMAGE}.bmap ${WORK_IMAGE}
+
+	if [ "true" == "${BMAP_DUMMY_OPT_SUPPORT}" ]; then
+		INFO "dummy run"
+		RUN_CMD_STREAMING bmaptool copy --bmap ${WORK_IMAGE}.bmap --dummy ${WORK_IMAGE} /dev/null
+	fi
 }
 
 function init-variables {
@@ -126,6 +141,7 @@ function init-variables {
 	export WORK_IMAGE="${RAM_DISK_DIR}/work-image.bin"
 	export WORK_IMAGE_SIZE="2000"
 	export WORK_ROOTFS_DIR="/mnt/bbb-rootfs"
+	[ "" == "${BMAP_DUMMY_OPT_SUPPORT}" ] && export BMAP_DUMMY_OPT_SUPPORT="false"
 }
 
 
