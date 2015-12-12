@@ -139,7 +139,6 @@ function init-variables {
 
 	export BBB_IMAGE="/tmp/$(basename ${BBB_IMAGE_URL})"
 	export WORK_IMAGE="${RAM_DISK_DIR}/work-image.bin"
-	export WORK_IMAGE_SIZE="2000"
 	export WORK_ROOTFS_DIR="/mnt/bbb-rootfs"
 	[ "" == "${BMAP_DUMMY_OPT_SUPPORT}" ] && export BMAP_DUMMY_OPT_SUPPORT="false"
 }
