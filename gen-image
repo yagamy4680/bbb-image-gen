@@ -65,6 +65,8 @@ function pre-rootfs {
 	RUN_CMD_STREAMING mount -o bind /sys ${WORK_ROOTFS_DIR}/sys
 	RUN_CMD_STREAMING mv ${WORK_ROOTFS_DIR}/etc/resolv.conf ${WORK_ROOTFS_DIR}/etc/resolv.conf.bak
 	echo "nameserver 8.8.8.8" > ${WORK_ROOTFS_DIR}/etc/resolv.conf
+	mkdir /tmp/bash-utils
+	cp $(dirname $0)/externals/bash-utils/system /tmp/bash-utils/
 
 	# This registers the static QEMU we copied as arm-interpreter to the kernel.
 	#
@@ -79,9 +81,30 @@ function run-chroot-cmd {
 }
 
 function process-rootfs {
+	TMPDIR="/tmp"
+	if [ ! -d "${TMPDIR}/dotfiles" ]; then
+		INFO "dotfiles: downloading from github"
+		git clone -q https://github.com/yagamy4680/dotfiles.git ${TMPDIR}/dotfiles
+		cd ${TMPDIR}/dotfiles
+		INFO "dotfiles: init sub-module"
+		git submodule init -q
+		INFO "dotfiles: update sub-module"
+		git submodule update -q
+		touch ${TMPDIR}/dotfiles/.bootstrapped
+	fi
+	INFO "dotfiles: copying from ${TMPDIR}/dotfiles to ${WORK_ROOTFS_DIR}/opt"
+	cp -R ${TMPDIR}/dotfiles ${WORK_ROOTFS_DIR}/opt
 	run-chroot-cmd "apt-key add /tmp/repos.rcn-ee.net.gpg.key"
 	run-chroot-cmd "apt-get update -q"
-	run-chroot-cmd "apt-get -q -y install $(cat ${CURRENT}/apt-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "apt-get -q -y install python3-pip $(cat ${CURRENT}/apt-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "pip3 install -q $(cat ${CURRENT}/pip3-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "echo 'Asia/Tokyo' > /etc/timezone && dpkg-reconfigure --frontend noninteractive tzdata"
+	run-chroot-cmd "update-rc.d apache2 disable"
+	run-chroot-cmd "update-rc.d udhcpd disable"
+	run-chroot-cmd "update-rc.d pppd-dns disable"
+	run-chroot-cmd "cd /opt/dotfiles && ./bootstrap"
+	run-chroot-cmd "source /tmp/bash-utils/system && generate_os_variable_dump"
+	# chroot ${WORK_ROOTFS_DIR} /bin/bash
 	run-chroot-cmd "apt-get clean -y -q && apt-get autoclean -y -q && find /var/lib/apt -type f | xargs rm -f"
 	run-chroot-cmd "rm -rf /var/tmp/*"
 	# chroot ${WORK_ROOTFS_DIR} /bin/bash
@@ -100,10 +123,10 @@ function post-rootfs {
 	RUN_CMD_STREAMING sleep 2
 	RUN_CMD_STREAMING rm -f ${WORK_ROOTFS_DIR}/etc/resolv.conf
 	RUN_CMD_STREAMING mv ${WORK_ROOTFS_DIR}/etc/resolv.conf.bak ${WORK_ROOTFS_DIR}/etc/resolv.conf
-	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/dev
-	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/proc
-	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/sys
-	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/tmp
+	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/dev && sync
+	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/proc && sync
+	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/sys && sync
+	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/tmp && sync
 	rm -f /tmp/repos.rcn-ee.net.gpg.key
 }
 
