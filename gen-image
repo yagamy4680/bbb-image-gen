@@ -99,7 +99,7 @@ function process-rootfs {
 	run-chroot-cmd "apt-get -q -y install python3-pip $(cat ${CURRENT}/apt-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "pip3 install -q $(cat ${CURRENT}/pip3-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "echo 'Asia/Tokyo' > /etc/timezone && dpkg-reconfigure --frontend noninteractive tzdata"
-	run-chroot-cmd "update-rc.d apache2 disable"
+	run-chroot-cmd "apt-get remove apache2 -y && apt-get purge apache2 -y"
 	run-chroot-cmd "update-rc.d udhcpd disable"
 	run-chroot-cmd "update-rc.d pppd-dns disable"
 	run-chroot-cmd "cd /opt/dotfiles && ./bootstrap"
