@@ -92,11 +92,12 @@ function process-rootfs {
 		git submodule update -q
 		touch ${TMPDIR}/dotfiles/.bootstrapped
 	fi
+	cat apt-packages.conf | grep -v "^#" | sed 's/^ *$//g' | grep -v "^$" | sort > /tmp/apt-packages.conf
 	INFO "dotfiles: copying from ${TMPDIR}/dotfiles to ${WORK_ROOTFS_DIR}/opt"
 	cp -R ${TMPDIR}/dotfiles ${WORK_ROOTFS_DIR}/opt
 	run-chroot-cmd "apt-key add /tmp/repos.rcn-ee.net.gpg.key"
 	run-chroot-cmd "apt-get update -q"
-	run-chroot-cmd "apt-get -q -y install python3-pip $(cat ${CURRENT}/apt-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "apt-get -q -y install python3-pip $(cat /tmp/apt-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "pip3 install -q $(cat ${CURRENT}/pip3-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "echo 'Asia/Tokyo' > /etc/timezone && dpkg-reconfigure --frontend noninteractive tzdata"
 	run-chroot-cmd "apt-get remove apache2 -y && apt-get purge apache2 -y"
