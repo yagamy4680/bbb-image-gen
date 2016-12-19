@@ -45,13 +45,15 @@ function create-work-image {
 
 function mount-work-image {
 	local TMP=$(mktemp /tmp/XXXXXX)
+	mount | grep "/mnt/bbb-rootfs/" | awk '{print $3}' | xargs -I{} sh -c "echo umounting {}; umount {}"
+	mount | grep "/mnt/bbb-rootfs" | awk '{print $3}' | xargs -I{} sh -c "echo umounting {}; umount {}"
+
 	kpartx -d -s -v ${WORK_IMAGE}
 	kpartx -a -s -v ${WORK_IMAGE} > ${TMP} 2>&1
 	[ "0" != "$?" ] && ERR "failed to mount ${WORK_IMAGE}" && cat ${TMP} && exit 1
 	export WORK_DEVICE="/dev/mapper/$(cat ${TMP} | tail -n1 | awk '{print $3}')"
 	INFO "working device: $(LIGHT_GREEN ${WORK_DEVICE})"
 
-	mount | grep "/mnt/bbb-rootfs" | awk '{print $1}' | xargs -I{} sh -c "umount {}"
 	[ ! -d "${WORK_ROOTFS_DIR}" ] && RUN_CMD_STREAMING mkdir -p ${WORK_ROOTFS_DIR}
 	RUN_CMD_STREAMING mount -t ext4 ${WORK_DEVICE} ${WORK_ROOTFS_DIR}
 	INFO "working rootfs: $(LIGHT_GREEN ${WORK_ROOTFS_DIR})"
@@ -65,8 +67,10 @@ function pre-rootfs {
 	RUN_CMD_STREAMING mount -o bind /sys ${WORK_ROOTFS_DIR}/sys
 	RUN_CMD_STREAMING mv ${WORK_ROOTFS_DIR}/etc/resolv.conf ${WORK_ROOTFS_DIR}/etc/resolv.conf.bak
 	echo "nameserver 8.8.8.8" > ${WORK_ROOTFS_DIR}/etc/resolv.conf
-	mkdir /tmp/bash-utils
-	cp $(dirname $0)/externals/bash-utils/system /tmp/bash-utils/
+	if [ ! -f /tmp/bash-utils/system ]; then
+		mkdir -p /tmp/bash-utils
+		cp $(dirname $0)/externals/bash-utils/system /tmp/bash-utils/
+	fi
 
 	# This registers the static QEMU we copied as arm-interpreter to the kernel.
 	#
@@ -91,6 +95,10 @@ function process-rootfs {
 		INFO "dotfiles: update sub-module"
 		git submodule update -q
 		touch ${TMPDIR}/dotfiles/.bootstrapped
+	else
+		cd ${TMPDIR}/dotfiles
+		git pull
+		cd ${CURRENT}
 	fi
 	cat apt-packages.conf | grep -v "^#" | sed 's/^ *$//g' | grep -v "^$" | sort > /tmp/apt-packages.conf
 	INFO "dotfiles: copying from ${TMPDIR}/dotfiles to ${WORK_ROOTFS_DIR}/opt"
@@ -105,10 +113,14 @@ function process-rootfs {
 	run-chroot-cmd "update-rc.d pppd-dns disable"
 	run-chroot-cmd "cd /opt/dotfiles && ./bootstrap"
 	run-chroot-cmd "source /tmp/bash-utils/system && generate_os_variable_dump"
-	# chroot ${WORK_ROOTFS_DIR} /bin/bash
+	if [ "true" == "${SHELL_AFTER_INSTALL}" ]; then
+		chroot ${WORK_ROOTFS_DIR} /bin/bash
+	fi
 	run-chroot-cmd "apt-get clean -y -q && apt-get autoclean -y -q && find /var/lib/apt -type f | xargs rm -f"
 	run-chroot-cmd "rm -rf /var/tmp/*"
-	# chroot ${WORK_ROOTFS_DIR} /bin/bash
+	if [ "true" == "${SHELL_AFTER_CLEANUP}" ]; then
+		chroot ${WORK_ROOTFS_DIR} /bin/bash
+	fi
 }
 
 function post-rootfs {
@@ -176,7 +188,8 @@ Examples:
 	$(LIGHT_GREEN $(basename $0)) $(GRAY https://archives.t2t.io/embedded-linux/os/beaglebone/mirrors/elinux.org/bb-green/bone-ubuntu-14.04.3-console-armhf-2016-02-11-2gb.img.xz)
 
 Supported environment variables:
-	N/A
+	SHELL_AFTER_INSTALL:  [true/false], run BASH shell in chroot after all packages are installed. Default: false
+	SHELL_AFTER_CLEANUP:  [true/false], run BASH shell in chroot after all unnecessary files are cleaned up. Default: false
 __EOF__
 echo -en "${HELPS}"
 }
