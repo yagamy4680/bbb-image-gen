@@ -28,8 +28,8 @@ function download-bbb-image {
 
 function create-work-image {
 	RUN_CMD_STREAMING rm -f ${WORK_IMAGE} || exit 1
-	FILENAME=$(basename ${BBB_IMAGE})
-	EXTENSION="${FILENAME#*.}"
+	local FILENAME=$(basename ${BBB_IMAGE})
+	local EXTENSION="${FILENAME#*.}"
 	INFO "image file extension: ${EXTENSION}"
 
 	INFO "copy bbb image to work image"
@@ -44,7 +44,7 @@ function create-work-image {
 }
 
 function mount-work-image {
-	TMP=$(mktemp /tmp/XXXXXX)
+	local TMP=$(mktemp /tmp/XXXXXX)
 	kpartx -d -s -v ${WORK_IMAGE}
 	kpartx -a -s -v ${WORK_IMAGE} > ${TMP} 2>&1
 	[ "0" != "$?" ] && ERR "failed to mount ${WORK_IMAGE}" && cat ${TMP} && exit 1
@@ -81,7 +81,7 @@ function run-chroot-cmd {
 }
 
 function process-rootfs {
-	TMPDIR="/tmp"
+	local TMPDIR="/tmp"
 	if [ ! -d "${TMPDIR}/dotfiles" ]; then
 		INFO "dotfiles: downloading from github"
 		git clone -q https://github.com/yagamy4680/dotfiles.git ${TMPDIR}/dotfiles
