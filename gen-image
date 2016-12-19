@@ -24,9 +24,37 @@ function download-bbb-image {
 	else
 		INFO "${BBB_IMAGE} exists"
 	fi
+
+	if [ "" != "${BBB_KERNEL_URL}" ]; then
+		if [ ! -f "${BBB_KERNEL_ARCHIVE}" ]; then
+			INFO "missing ${BBB_KERNEL_ARCHIVE}"
+			wget -O ${BBB_KERNEL_ARCHIVE} ${BBB_KERNEL_URL} || exit 1
+		else
+			INFO "${BBB_KERNEL_ARCHIVE} exists"
+		fi
+	fi
 }
 
 function create-work-image {
+	# Clean-up previous mount.
+	# 
+	if [ "" != "$(mount | grep ${WORK_ROOTFS_DIR}/)" ]; then 
+		mount | grep "${WORK_ROOTFS_DIR}/" | awk '{print $3}' | xargs -I{} sh -c "echo umounting {}; umount {}"
+		RUN_CMD_STREAMING sync
+		RUN_CMD_STREAMING sync
+		RUN_CMD_STREAMING sleep 1
+	fi
+	if [ "" != "$(mount | grep ${WORK_ROOTFS_DIR})" ]; then
+		mount | grep "${WORK_ROOTFS_DIR}" | awk '{print $3}' | xargs -I{} sh -c "echo umounting {}; umount {}"
+		RUN_CMD_STREAMING sync
+		RUN_CMD_STREAMING sync
+		RUN_CMD_STREAMING sleep 1
+		ls -al ${WORK_IMAGE}
+		losetup -a
+		RUN_CMD_STREAMING kpartx -d -v ${WORK_IMAGE}
+		losetup -a
+	fi
+
 	RUN_CMD_STREAMING rm -f ${WORK_IMAGE} || exit 1
 	local FILENAME=$(basename ${BBB_IMAGE})
 	local EXTENSION="${FILENAME#*.}"
@@ -45,9 +73,6 @@ function create-work-image {
 
 function mount-work-image {
 	local TMP=$(mktemp /tmp/XXXXXX)
-	mount | grep "/mnt/bbb-rootfs/" | awk '{print $3}' | xargs -I{} sh -c "echo umounting {}; umount {}"
-	mount | grep "/mnt/bbb-rootfs" | awk '{print $3}' | xargs -I{} sh -c "echo umounting {}; umount {}"
-
 	kpartx -d -s -v ${WORK_IMAGE}
 	kpartx -a -s -v ${WORK_IMAGE} > ${TMP} 2>&1
 	[ "0" != "$?" ] && ERR "failed to mount ${WORK_IMAGE}" && cat ${TMP} && exit 1
@@ -100,11 +125,19 @@ function process-rootfs {
 		git pull
 		cd ${CURRENT}
 	fi
-	cat apt-packages.conf | grep -v "^#" | sed 's/^ *$//g' | grep -v "^$" | sort > /tmp/apt-packages.conf
+	cat ${CURRENT}/apt-packages.conf | grep -v "^#" | sed 's/^ *$//g' | grep -v "^$" | sort > /tmp/apt-packages.conf
 	INFO "dotfiles: copying from ${TMPDIR}/dotfiles to ${WORK_ROOTFS_DIR}/opt"
 	cp -R ${TMPDIR}/dotfiles ${WORK_ROOTFS_DIR}/opt
 	run-chroot-cmd "apt-key add /tmp/repos.rcn-ee.net.gpg.key"
 	run-chroot-cmd "apt-get update -q"
+	if [ "" != "${BBB_KERNEL_APT_PKG}" ]; then
+		run-chroot-cmd "apt-get -q -y install ${BBB_KERNEL_APT_PKG}"
+		run-chroot-cmd "apt-get update -q"
+	fi
+	if [ "" != "${BBB_KERNEL_URL}" ] && [ -f "${BBB_KERNEL_ARCHIVE}" ]; then
+		INFO "applying ${BBB_KERNEL_ARCHIVE} to patch ${WORK_ROOTFS_DIR}"
+		tar xf ${BBB_KERNEL_ARCHIVE} -C ${WORK_ROOTFS_DIR}
+	fi
 	run-chroot-cmd "apt-get -q -y install python3-pip $(cat /tmp/apt-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "pip3 install -q $(cat ${CURRENT}/pip3-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "echo 'Asia/Tokyo' > /etc/timezone && dpkg-reconfigure --frontend noninteractive tzdata"
@@ -173,6 +206,7 @@ function init-variables {
 	cd ${CURRENT}
 
 	export BBB_IMAGE="/tmp/$(basename ${BBB_IMAGE_URL})"
+	export BBB_KERNEL_ARCHIVE="/tmp/$(basename ${BBB_KERNEL_URL})"
 	export WORK_IMAGE="${RAM_DISK_DIR}/work-image.bin"
 	export WORK_ROOTFS_DIR="/mnt/bbb-rootfs"
 	[ "" == "${BMAP_DUMMY_OPT_SUPPORT}" ] && export BMAP_DUMMY_OPT_SUPPORT="false"
@@ -190,6 +224,7 @@ Examples:
 Supported environment variables:
 	SHELL_AFTER_INSTALL:  [true/false], run BASH shell in chroot after all packages are installed. Default: false
 	SHELL_AFTER_CLEANUP:  [true/false], run BASH shell in chroot after all unnecessary files are cleaned up. Default: false
+	BBB_KERNEL_URL :  URL to the kernel archive file to patch rootfs, e.g. https://archives.t2t.io/embedded-linux/os/beaglebone/kernels/bone-ubuntu-16.04-console-armhf-2016-06-09-2gb-kernel-4.4.12.tar.gz
 __EOF__
 echo -en "${HELPS}"
 }
