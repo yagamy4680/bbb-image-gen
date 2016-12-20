@@ -1,0 +1,13 @@
+{
+	"url": "https://archives.t2t.io/embedded-linux/tools/bluez/linux-ubuntu-trusty/armv7l/bluez-5.32-build-archive.tar.xz",
+	"install": "make install",
+	"prerequisites": [
+		"libdbus-1-dev",
+		"libdbus-glib-1-dev",
+		"libglib2.0-dev",
+		"libical-dev",
+		"libreadline-dev",
+		"libudev-dev",
+		"libusb-dev"
+	]
+}

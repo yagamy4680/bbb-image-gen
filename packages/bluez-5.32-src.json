@@ -1,0 +1,13 @@
+{
+	"url": "https://www.kernel.org/pub/linux/bluetooth/bluez-5.32.tar.xz",
+	"install": "cd bluez-5.32 && ./configure --disable-systemd && make && make install",
+	"prerequisites": [
+		"libdbus-1-dev",
+		"libdbus-glib-1-dev",
+		"libglib2.0-dev",
+		"libical-dev",
+		"libreadline-dev",
+		"libudev-dev",
+		"libusb-dev"
+	]
+}

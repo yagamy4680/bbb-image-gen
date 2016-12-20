@@ -57,7 +57,7 @@ function create-work-image {
 
 	RUN_CMD_STREAMING rm -f ${WORK_IMAGE} || exit 1
 	local FILENAME=$(basename ${BBB_IMAGE})
-	local EXTENSION="${FILENAME#*.}"
+	local EXTENSION="${FILENAME##*.}"
 	INFO "image file extension: ${EXTENSION}"
 
 	INFO "copy bbb image to work image"
@@ -111,6 +111,10 @@ function run-chroot-cmd {
 
 function process-rootfs {
 	local TMPDIR="/tmp"
+	local TMP0=$(mktemp /tmp/XXXXXX)
+
+	# Prepare `/opt/dotfiles`
+	#
 	if [ ! -d "${TMPDIR}/dotfiles" ]; then
 		INFO "dotfiles: downloading from github"
 		git clone -q https://github.com/yagamy4680/dotfiles.git ${TMPDIR}/dotfiles
@@ -120,14 +124,31 @@ function process-rootfs {
 		INFO "dotfiles: update sub-module"
 		git submodule update -q
 		touch ${TMPDIR}/dotfiles/.bootstrapped
+		INFO "dotfiles: updated"
 	else
+		INFO "dotfiles: update local cache with latest commit"
 		cd ${TMPDIR}/dotfiles
 		git pull
 		cd ${CURRENT}
+		INFO "dotfile: updated"
 	fi
-	cat ${CURRENT}/apt-packages.conf | grep -v "^#" | sed 's/^ *$//g' | grep -v "^$" | sort > /tmp/apt-packages.conf
 	INFO "dotfiles: copying from ${TMPDIR}/dotfiles to ${WORK_ROOTFS_DIR}/opt"
 	cp -R ${TMPDIR}/dotfiles ${WORK_ROOTFS_DIR}/opt
+
+	# Prepare the list of software packages to be installed via `apt-get install`
+	#
+	INFO "generating /tmp/apt-packages.conf"
+	cat ${CURRENT}/apt-packages.conf | grep -v "^#" | sed 's/^ *$//g' | grep -v "^$" | sort >> ${TMP0}
+	local PACKAGES="$(echo ${PRE_BUILT_PACKAGES} | tr ',' '\n')"
+	for p in "${PACKAGES[@]}" ; do
+		local PKG_JSON="${CURRENT}/packages/${p}.json"
+		INFO "apt-packages: checking $(LIGHT_GREEN ${PKG_JSON})"
+		[ -f "${PKG_JSON}" ] && cat ${PKG_JSON} | jq .prerequisites | jq .[] | sed 's/^"//g' | sed 's/"$//g' >> ${TMP0}
+	done
+	cat ${TMP0} | grep -v "^#" | sed 's/^ *$//g' | grep -v "^$" | sort -u > /tmp/apt-packages.conf
+
+	# PACKAGE INSTALLATION.
+	#
 	run-chroot-cmd "apt-key add /tmp/repos.rcn-ee.net.gpg.key"
 	run-chroot-cmd "apt-get update -q"
 	if [ "" != "${BBB_KERNEL_APT_PKG}" ]; then
@@ -140,12 +161,30 @@ function process-rootfs {
 	fi
 	run-chroot-cmd "apt-get -q -y install python3-pip $(cat /tmp/apt-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "pip3 install -q $(cat ${CURRENT}/pip3-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "source /tmp/bash-utils/system && generate_os_variable_dump"
+
+	local OS_NAME=$(cat ${WORK_ROOTFS_DIR}/opt/system | grep OS_NAME | awk -F'\t' '{print $2}')
+	local OS_ARCH=$(cat ${WORK_ROOTFS_DIR}/opt/system | grep OS_ARCH | awk -F'\t' '{print $2}')
+	for p in "${PACKAGES[@]}" ; do
+		local PKG_JSON="${CURRENT}/packages/${p}.json"
+		if [ -f "${PKG_JSON}" ] ; then
+			local URL=$(cat ${PKG_JSON} | jq .url | sed 's/^"//g' | sed 's/"$//g')
+			local ARCHIVE="/tmp/$(basename ${URL})"
+			local DIR="/tmp/${p}"
+			[ ! -f "${ARCHIVE}" ] && INFO "downloading ${ARCHIVE} from $(LIGHT_GREEN ${URL})" && wget -O ${ARCHIVE} ${URL} 
+			rm -rf ${DIR}
+			mkdir -p ${DIR}
+			INFO "extracting ${ARCHIVE}"
+			tar xf ${ARCHIVE} -C ${DIR}
+			run-chroot-cmd "cd ${DIR} && $(cat ${PKG_JSON} | jq .install | sed 's/^"//g' | sed 's/"$//g')"
+		fi
+	done
+
 	run-chroot-cmd "echo 'Asia/Tokyo' > /etc/timezone && dpkg-reconfigure --frontend noninteractive tzdata"
 	run-chroot-cmd "apt-get remove apache2 -y && apt-get purge apache2 -y"
 	run-chroot-cmd "update-rc.d udhcpd disable"
 	run-chroot-cmd "update-rc.d pppd-dns disable"
 	run-chroot-cmd "cd /opt/dotfiles && ./bootstrap"
-	run-chroot-cmd "source /tmp/bash-utils/system && generate_os_variable_dump"
 	if [ "true" == "${SHELL_AFTER_INSTALL}" ]; then
 		chroot ${WORK_ROOTFS_DIR} /bin/bash
 	fi
@@ -206,7 +245,7 @@ function init-variables {
 	cd ${CURRENT}
 
 	export BBB_IMAGE="/tmp/$(basename ${BBB_IMAGE_URL})"
-	export BBB_KERNEL_ARCHIVE="/tmp/$(basename ${BBB_KERNEL_URL})"
+	[ "" != "${BBB_KERNEL_URL}" ] && export BBB_KERNEL_ARCHIVE="/tmp/$(basename ${BBB_KERNEL_URL})"
 	export WORK_IMAGE="${RAM_DISK_DIR}/work-image.bin"
 	export WORK_ROOTFS_DIR="/mnt/bbb-rootfs"
 	[ "" == "${BMAP_DUMMY_OPT_SUPPORT}" ] && export BMAP_DUMMY_OPT_SUPPORT="false"
