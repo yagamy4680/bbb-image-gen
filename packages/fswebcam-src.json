@@ -1,0 +1,10 @@
+{
+	"git": "https://github.com/avafinger/fswebcam.git",
+	"install": "echo $(nproc) && ./configure --prefix=/usr --disable-v4l1 --enable-32bit-buffer && make -j$(nproc) && make install",
+	"prerequisites": [
+		"libgd2-xpm-dev",
+		"libjpeg-dev",
+		"libpng-dev",
+		"libfreetype6-dev"
+	]
+}

@@ -139,7 +139,7 @@ function process-rootfs {
 	#
 	INFO "generating /tmp/apt-packages.conf"
 	cat ${CURRENT}/apt-packages.conf | grep -v "^#" | sed 's/^ *$//g' | grep -v "^$" | sort >> ${TMP0}
-	local PACKAGES="$(echo ${PRE_BUILT_PACKAGES} | tr ',' '\n')"
+	local PACKAGES=($(echo ${PRE_BUILT_PACKAGES} | tr ',' '\n'))
 	for p in "${PACKAGES[@]}" ; do
 		local PKG_JSON="${CURRENT}/packages/${p}.json"
 		INFO "apt-packages: checking $(LIGHT_GREEN ${PKG_JSON})"
@@ -167,23 +167,33 @@ function process-rootfs {
 	local OS_ARCH=$(cat ${WORK_ROOTFS_DIR}/opt/system | grep OS_ARCH | awk -F'\t' '{print $2}')
 	for p in "${PACKAGES[@]}" ; do
 		local PKG_JSON="${CURRENT}/packages/${p}.json"
+		INFO "prebuilt-packages: checking $(LIGHT_GREEN ${PKG_JSON})"
 		if [ -f "${PKG_JSON}" ] ; then
-			local URL=$(cat ${PKG_JSON} | jq .url | sed 's/^"//g' | sed 's/"$//g')
-			local ARCHIVE="/tmp/$(basename ${URL})"
 			local DIR="/tmp/${p}"
-			[ ! -f "${ARCHIVE}" ] && INFO "downloading ${ARCHIVE} from $(LIGHT_GREEN ${URL})" && wget -O ${ARCHIVE} ${URL} 
-			rm -rf ${DIR}
-			mkdir -p ${DIR}
-			INFO "extracting ${ARCHIVE}"
-			tar xf ${ARCHIVE} -C ${DIR}
+			local URL=$(cat ${PKG_JSON} | jq .url | sed 's/^"//g' | sed 's/"$//g')
+			local GIT=$(cat ${PKG_JSON} | jq .git | sed 's/^"//g' | sed 's/"$//g')
+
+			rm -rf ${DIR} && mkdir -p ${DIR}
+
+			if [ "null" != "${URL}" ]; then
+				local ARCHIVE="/tmp/$(basename ${URL})"
+				[ ! -f "${ARCHIVE}" ] && INFO "downloading ${ARCHIVE} from $(LIGHT_GREEN ${URL})" && wget -O ${ARCHIVE} ${URL} 
+				INFO "extracting ${ARCHIVE}"
+				tar xf ${ARCHIVE} -C ${DIR}
+			else
+				git clone ${GIT} ${DIR}
+			fi
 			run-chroot-cmd "cd ${DIR} && $(cat ${PKG_JSON} | jq .install | sed 's/^"//g' | sed 's/"$//g')"
 		fi
 	done
 
 	run-chroot-cmd "echo 'Asia/Tokyo' > /etc/timezone && dpkg-reconfigure --frontend noninteractive tzdata"
+	run-chroot-cmd "apt-get install dnsmasq isc-dhcp-server hostapd"
 	run-chroot-cmd "apt-get remove apache2 -y && apt-get purge apache2 -y"
-	run-chroot-cmd "update-rc.d udhcpd disable"
+	run-chroot-cmd "apt-get remove udhcpd -y && apt-get purge udhcpd -y"
 	run-chroot-cmd "update-rc.d pppd-dns disable"
+	run-chroot-cmd "update-rc.d dnsmasq disable"
+	run-chroot-cmd "update-rc.d isc-dhcp-server disable"
 	run-chroot-cmd "cd /opt/dotfiles && ./bootstrap"
 	if [ "true" == "${SHELL_AFTER_INSTALL}" ]; then
 		chroot ${WORK_ROOTFS_DIR} /bin/bash
