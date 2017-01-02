@@ -194,6 +194,7 @@ function process-rootfs {
 	run-chroot-cmd "update-rc.d pppd-dns disable"
 	run-chroot-cmd "update-rc.d dnsmasq disable"
 	run-chroot-cmd "update-rc.d isc-dhcp-server disable"
+	run-chroot-cmd "update-rc.d ntp disable"
 	run-chroot-cmd "cd /opt/dotfiles && ./bootstrap"
 	if [ "true" == "${SHELL_AFTER_INSTALL}" ]; then
 		chroot ${WORK_ROOTFS_DIR} /bin/bash
