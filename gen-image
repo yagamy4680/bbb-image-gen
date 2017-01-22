@@ -189,12 +189,10 @@ function process-rootfs {
 	done
 
 	run-chroot-cmd "echo 'Asia/Tokyo' > /etc/timezone && dpkg-reconfigure --frontend noninteractive tzdata"
-	run-chroot-cmd "apt-get install dnsmasq isc-dhcp-server hostapd"
+	run-chroot-cmd "apt-get install hostapd"
 	run-chroot-cmd "apt-get remove apache2 -y && apt-get purge apache2 -y"
 	run-chroot-cmd "apt-get remove udhcpd -y && apt-get purge udhcpd -y"
 	run-chroot-cmd "update-rc.d pppd-dns disable"
-	run-chroot-cmd "update-rc.d dnsmasq disable"
-	run-chroot-cmd "update-rc.d isc-dhcp-server disable"
 	run-chroot-cmd "update-rc.d ntp disable"
 	run-chroot-cmd "cd /opt/dotfiles && ./bootstrap"
 	if [ "true" == "${SHELL_AFTER_INSTALL}" ]; then
