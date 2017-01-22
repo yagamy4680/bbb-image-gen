@@ -159,7 +159,8 @@ function process-rootfs {
 		INFO "applying ${BBB_KERNEL_ARCHIVE} to patch ${WORK_ROOTFS_DIR}"
 		tar xf ${BBB_KERNEL_ARCHIVE} -C ${WORK_ROOTFS_DIR}
 	fi
-	run-chroot-cmd "apt-get -q -y install python3-pip $(cat /tmp/apt-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "apt-get -q -y install python3-pip python-pip $(cat /tmp/apt-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "pip  install -q $(cat ${CURRENT}/pip2-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "pip3 install -q $(cat ${CURRENT}/pip3-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "source /tmp/bash-utils/system && generate_os_variable_dump"
 
