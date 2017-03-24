@@ -1,6 +1,6 @@
 {
 	"url": "https://www.kernel.org/pub/linux/bluetooth/bluez-5.32.tar.xz",
-	"install": "cd bluez-5.32 && echo $(nproc) && ./configure --disable-systemd && make -j$(nproc) && make install",
+	"install": "cd bluez-5.32 && echo $(nproc) && ./configure --disable-systemd && make -j$(nproc) && make install && cp -v ./attrib/gatttool /usr/local/bin",
 	"prerequisites": [
 		"libdbus-1-dev",
 		"libdbus-glib-1-dev",
