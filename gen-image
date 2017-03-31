@@ -160,7 +160,13 @@ function process-rootfs {
 		tar xf ${BBB_KERNEL_ARCHIVE} -C ${WORK_ROOTFS_DIR}
 	fi
 	run-chroot-cmd "apt-get -q -y install python3-pip python-pip $(cat /tmp/apt-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "easy_install --version"
+	run-chroot-cmd "pip  install --upgrade setuptools"
+	run-chroot-cmd "easy_install --version"
 	run-chroot-cmd "pip  install -q $(cat ${CURRENT}/pip2-packages.conf | tr '\n' ' ')"
+	run-chroot-cmd "easy_install3 --version"
+	run-chroot-cmd "pip3 install --upgrade setuptools"
+	run-chroot-cmd "easy_install3 --version"
 	run-chroot-cmd "pip3 install -q $(cat ${CURRENT}/pip3-packages.conf | tr '\n' ' ')"
 	run-chroot-cmd "source /tmp/bash-utils/system && generate_os_variable_dump"
 
