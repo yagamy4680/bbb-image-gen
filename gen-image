@@ -202,6 +202,11 @@ function process-rootfs {
 	run-chroot-cmd "update-rc.d ntp disable"
 	run-chroot-cmd "service ntp stop"
 	run-chroot-cmd "cd /opt/dotfiles && ./bootstrap"
+
+	cp ${BASEDIR}/tools/dump-system-pkg-versions /tmp
+	run-chroot-cmd "/tmp/dump-system-pkg-versions"
+	cat /tmp/pkg-versions.csv | csvlook -t
+
 	if [ "true" == "${SHELL_AFTER_INSTALL}" ]; then
 		chroot ${WORK_ROOTFS_DIR} /bin/bash
 	fi
@@ -230,6 +235,8 @@ function post-rootfs {
 	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/sys && sync
 	RUN_CMD_STREAMING umount ${WORK_ROOTFS_DIR}/tmp && sync
 	rm -f /tmp/repos.rcn-ee.net.gpg.key
+
+	du -s -m ${WORK_ROOTFS_DIR}/*
 }
 
 function umount-image {
