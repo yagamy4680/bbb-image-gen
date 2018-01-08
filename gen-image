@@ -91,7 +91,13 @@ function pre-rootfs {
 	RUN_CMD_STREAMING mount -o bind /proc ${WORK_ROOTFS_DIR}/proc
 	RUN_CMD_STREAMING mount -o bind /sys ${WORK_ROOTFS_DIR}/sys
 	RUN_CMD_STREAMING mv ${WORK_ROOTFS_DIR}/etc/resolv.conf ${WORK_ROOTFS_DIR}/etc/resolv.conf.bak
-	echo "nameserver 8.8.8.8" > ${WORK_ROOTFS_DIR}/etc/resolv.conf
+	echo "nameserver 8.8.8.8"  > ${WORK_ROOTFS_DIR}/etc/resolv.conf
+	export LC_ALL=en_US.UTF-8
+	export LANG=en_US.UTF-8
+	echo "LC_ALL=en_US.UTF-8" >> ${WORK_ROOTFS_DIR}/etc/environment
+	echo "LANG=en_US.UTF-8"   >> ${WORK_ROOTFS_DIR}/etc/environment
+	INFO "force UTF8 to /etc/environment:"
+	cat ${WORK_ROOTFS_DIR}/etc/environment | awk '{printf "\t%s\n", $0}'
 	if [ ! -f /tmp/bash-utils/system ]; then
 		mkdir -p /tmp/bash-utils
 		cp $(dirname $0)/externals/bash-utils/system /tmp/bash-utils/
@@ -195,7 +201,8 @@ function process-rootfs {
 	run-chroot-cmd "update-rc.d pppd-dns disable"
 	run-chroot-cmd "update-rc.d ntp disable"
 	run-chroot-cmd "service ntp stop"
-	run-chroot-cmd "cd /opt/dotfiles && ./bootstrap"
+	run-chroot-cmd "cd /opt/dotfiles && FORCE_ROOT_USER_IN_QEMU=true ./bootstrap"
+	run-chroot-cmd "apt list --installed > /tmp/apt-packages.txt"
 	if [ "true" == "${SHELL_AFTER_INSTALL}" ]; then
 		chroot ${WORK_ROOTFS_DIR} /bin/bash
 	fi
