@@ -206,6 +206,7 @@ function process-rootfs {
 	run-chroot-cmd "apt-get remove udhcpd -y && apt-get purge udhcpd -y"
 	run-chroot-cmd "update-rc.d pppd-dns disable"
 	run-chroot-cmd "update-rc.d ntp disable"
+	run-chroot-cmd "update-rc.d dnsmasq disable"
 	run-chroot-cmd "service ntp stop"
 	run-chroot-cmd "cd /opt/dotfiles && FORCE_ROOT_USER_IN_QEMU=true ./bootstrap"
 	run-chroot-cmd "apt list --installed > /tmp/apt-packages.txt"

@@ -1,0 +1,7 @@
+{
+	"url": "http://darkswarm.org/eeprog/eeprog-0.7.6-tear12.tar.gz",
+	"install": "cd eeprog-0.7.6-tear12 && make && cp -v ./eeprog /sbin",
+	"prerequisites": [
+		"libi2c-dev"
+	]
+}
