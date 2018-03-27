@@ -1,0 +1,9 @@
+{
+	"url": "http://www.dest-unreach.org/socat/download/socat-1.7.3.2.tar.gz",
+	"install": "cd socat-1.7.3.2 && ./configure && make && cp -v ./socat /sbin",
+	"comments": [
+		"http://www.dest-unreach.org/socat/",
+		"https://github.com/craSH/socat"
+	],
+	"prerequisites": []
+}

@@ -1,0 +1,7 @@
+{
+	"git": "https://github.com/jsarenik/eeprog.git",
+	"install": "make && cp -v ./eeprog /sbin",
+	"prerequisites": [
+		"libi2c-dev"
+	]
+}
