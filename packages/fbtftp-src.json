@@ -1,0 +1,5 @@
+{
+	"git": "https://github.com/facebook/fbtftp.git",
+	"install": "python3 setup.py build && python3 setup.py install",
+	"prerequisites": []
+}
