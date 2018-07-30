@@ -206,7 +206,7 @@ function process-rootfs {
 		run-chroot-cmd "apt-get remove ${pkg} -y && apt-get purge ${pkg} -y"
 	done
 
-	for s in pppd-dns ntp dnsmasq chrony ifplugd ; do
+	for s in pppd-dns ntp dnsmasq chrony ifplugd statd gssd idmapd ; do
 		run-chroot-cmd "update-rc.d ${s} disable; service ${s} stop"
 	done
 
